@@ -28,9 +28,9 @@ void gen_rand_matrix(const std::string& name, size_t N, size_t M) {
     std::time_t now = std::time(0);
     boost::random::mt19937 gen{static_cast<std::uint32_t>(now)};
     if constexpr(is_int<T>::value) {
-        boost::random::uniform_int_distribution<> dist{1, 100};
+        boost::random::uniform_int_distribution<> dist{1, 20};
         for(size_t i = 0; i < N; ++i)
-            for(size_t j = 0; j < N; ++j)
+            for(size_t j = 0; j < M; ++j)
                 A(i, j) = dist(gen);
     } else {
         boost::random::uniform_real_distribution<> dist{1, 10};
@@ -45,8 +45,11 @@ template <typename T>
 class Solver_Algebrick
 {
 private:
-    std::unique_ptr<matrix::matrix<T>> A;
+    std::unique_ptr<matrix::matrix<T>> A, L, U;
     std::unique_ptr<std::vector<T>> x;
+
+    std::unique_ptr<std::vector<T>> x_1;
+    std::unique_ptr<std::vector<T>> v;
     std::unique_ptr<T> tmp;
 
     std::ifstream file;
@@ -67,8 +70,11 @@ public:
             return;
         }
         x = std::make_unique<std::vector<T>>(N);
+        x_1 = std::make_unique<std::vector<T>>(N);
+        v = std::make_unique<std::vector<T>>(N);
         A = std::make_unique<matrix::matrix<T>>(N, M);
-
+        U = std::make_unique<matrix::matrix<T>>(N, N);
+        L = std::make_unique<matrix::matrix<T>>(N, N);
     }
     void init_matrix() {
         std::lock_guard<std::mutex> l(mutex);
@@ -86,10 +92,9 @@ public:
     }
     void print_matrix(){
         std::lock_guard<std::mutex> l(mutex);
-        std::cout << krm::format_delimited(krm::columns(A->size2()) [krm::auto_], '\t', A->data()) << std::endl;
-//        std::ofstream("matrix_out.txt") << krm::format_delimited(krm::columns(A->size2()) [krm::auto_], '\t', A->data()) << "\n";
+        std::cout << std::fixed << std::defaultfloat << krm::format_delimited(krm::columns(A->size2()) [krm::auto_], '\t', A->data()) << std::endl;
     }
-    void solver() {
+    void solver_gauss() {
         std::lock_guard<std::mutex> l(mutex);
         T s{};
         for(int i = A->size1() - 1; i >= 0; --i) {
@@ -101,6 +106,60 @@ public:
         }
         int i = 1;
         for(const auto& t : *x) std::cout << "x[" << std::setw(3) << i ++ << "] = " << t << std::endl;
+    }
+    void solver_LU() {
+        std::lock_guard<std::mutex> l(mutex);
+        for(size_t i = 0; i < N; ++i) L->at_element(i, i) = T(1);
+        for(size_t i = 0; i < N; ++i) {
+            U_Row(i);
+            if(i < N - 1) L_Col(i);
+        }
+        std::cout << std::setprecision(1) << "U =\n" << krm::format_delimited(krm::columns(U->size2()) [krm::auto_], '\t', U->data()) << std::endl;
+        std::cout << std::setprecision(1) << "L =\n" << krm::format_delimited(krm::columns(L->size2()) [krm::auto_], '\t', L->data()) << std::endl;
+    }
+    void print_vector(){
+        std::lock_guard<std::mutex> l(mutex);
+        LV_B();
+        UX_V();
+        for(const auto& t : *x_1)
+        std::cout << t << std::endl;
+    }
+private:
+    void U_Row(size_t i) {
+        for(size_t j = i; j < N; ++j) {
+            T s{};
+            for(size_t k = 0; k < N - 1; ++k) {
+                s += U->at_element(k, j)*L->at_element(i, k);
+            }
+            U->at_element(i, j) = A->at_element(i, j) - s;
+        }
+    }
+    void L_Col(size_t j) {
+        for(size_t i = j + 1; i < N; ++i) {
+            T s{};
+            for(size_t k = 0; k <= j; k++) {
+                s += U->at_element(k, j)*L->at_element(i, k);
+            }
+            L->at_element(i, j) = (A->at_element(i, j) - s)/U->at_element(j, j);
+        }
+    }
+    void LV_B() {
+        for(size_t i = 0; i < N; ++i) {
+            T s{};
+            for(size_t j = 0; j <= i; j++) {
+                s += L->at_element(i, j)*v->at(j);
+            }
+            v->at(i) = A->at_element(i, M - 1) - s;
+        }
+    }
+    void UX_V() {
+        for(int i = N - 1; i >= 0; i--) {
+            T s{};
+            for(size_t j = i + 1; j < N; j++) {
+                s += U->at_element(i, j)*x_1->at(j);
+            }
+            x_1->at(i) = (v->at(i) - s)/U->at_element(i, i);
+        }
     }
 };
 
