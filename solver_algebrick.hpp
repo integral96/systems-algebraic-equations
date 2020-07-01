@@ -41,11 +41,19 @@ void gen_rand_matrix(const std::string& name, size_t N, size_t M) {
     std::ofstream(name) << N << "\n" << M << "\n" << krm::format_delimited(krm::columns(A.size2()) [krm::auto_], '\t', A.data()) << "\n";
 }
 
+
+template<typename T>
+std::ostream& operator << (std::ostream& out, const std::shared_ptr<matrix::matrix<T>>& A) {
+    out << std::setprecision(1)  << krm::format_delimited(krm::columns(A->size2()) [krm::auto_], '\t', A->data()) << std::endl;
+    return out;
+}
+
 template <typename T>
 class Solver_Algebrick
 {
 private:
-    std::unique_ptr<matrix::matrix<T>> A, L, U;
+    std::shared_ptr<matrix::matrix<T>> A;
+    std::shared_ptr<matrix::matrix<T>> L, U;
     std::unique_ptr<std::vector<T>> x;
 
     std::unique_ptr<std::vector<T>> x_1;
@@ -72,9 +80,10 @@ public:
         x = std::make_unique<std::vector<T>>(N);
         x_1 = std::make_unique<std::vector<T>>(N);
         v = std::make_unique<std::vector<T>>(N);
-        A = std::make_unique<matrix::matrix<T>>(N, M);
-        U = std::make_unique<matrix::matrix<T>>(N, N);
-        L = std::make_unique<matrix::matrix<T>>(N, N);
+
+        A = std::make_shared<matrix::matrix<T>>(N, M);
+        U = std::make_shared<matrix::matrix<T>>(N, N);
+        L = std::make_shared<matrix::matrix<T>>(N, N);
     }
     void init_matrix() {
         std::lock_guard<std::mutex> l(mutex);
@@ -83,12 +92,14 @@ public:
     }
     void triang_matrix() {
         std::lock_guard<std::mutex> l(mutex);
-        for(size_t j = 0; j < A->size1() - 1; ++j)
+        for(size_t j = 0; j < A->size1() - 1; ++j) {
             for(size_t i = j + 1; i < A->size2() - 1; ++i) {
                 *tmp = A->at_element(i, j)/A->at_element(j, j);
                 for(size_t k = 0; k < A->size2(); ++k)
                     A->at_element(i, k) -= A->at_element(j, k) * (*tmp);
             }
+        }
+        std::cout << A << std::endl;
     }
     void print_matrix(){
         std::lock_guard<std::mutex> l(mutex);
@@ -105,7 +116,7 @@ public:
             x->at(i) = (A->at_element(i, A->size2() - 1) - s)/A->at_element(i, i);
         }
         int i = 1;
-        for(const auto& t : *x) std::cout << "x[" << std::setw(3) << i ++ << "] = " << t << std::endl;
+        for(const auto& t : *x) std::cout << "x[" << i ++ << "] = " << t << std::endl;
     }
     void solver_LU() {
         std::lock_guard<std::mutex> l(mutex);
@@ -121,8 +132,8 @@ public:
         std::lock_guard<std::mutex> l(mutex);
         LV_B();
         UX_V();
-        for(const auto& t : *x_1)
-        std::cout << t << std::endl;
+        int i = 1;
+        for(const auto& t : *x_1) std::cout << "x[" << i ++ << "] = " << t << std::endl;
     }
 private:
     void U_Row(size_t i) {
