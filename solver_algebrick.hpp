@@ -54,18 +54,16 @@ class Solver_Algebrick
 private:
     std::shared_ptr<matrix::matrix<T>> A;
     std::shared_ptr<matrix::matrix<T>> L, U;
-    std::unique_ptr<std::vector<T>> x;
 
     std::unique_ptr<std::vector<T>> x_1;
     std::unique_ptr<std::vector<T>> v;
-    std::unique_ptr<T> tmp;
 
     std::ifstream file;
     size_t N{}, M{};
 
     std::mutex mutex;
 public:
-    Solver_Algebrick(const std::string& name) : file(name), tmp(std::make_unique<T>()) {
+    Solver_Algebrick(const std::string& name) : file(name) {
         if(!file)
         {
             std::cerr << "Error opening matrix file.\n";
@@ -77,46 +75,49 @@ public:
             std::cerr << "Matrix sizes are out of bounds.\n";
             return;
         }
-        x = std::make_unique<std::vector<T>>(N);
         x_1 = std::make_unique<std::vector<T>>(N);
         v = std::make_unique<std::vector<T>>(N);
 
         A = std::make_shared<matrix::matrix<T>>(N, M);
         U = std::make_shared<matrix::matrix<T>>(N, N);
         L = std::make_shared<matrix::matrix<T>>(N, N);
+        init_matrix();
+        std::cout << "Матрица А: \n" << A << std::endl;
     }
-    void init_matrix() {
-        std::lock_guard<std::mutex> l(mutex);
+private:  
+    void inline init_matrix() {
         for(size_t i = 0; i < A->size1(); ++i)
             for(size_t j = 0; j < A->size2(); ++j) file >> A->at_element(i, j);
     }
-    void triang_matrix() {
-        std::lock_guard<std::mutex> l(mutex);
-        for(size_t j = 0; j < A->size1() - 1; ++j) {
-            for(size_t i = j + 1; i < A->size2() - 1; ++i) {
-                *tmp = A->at_element(i, j)/A->at_element(j, j);
-                for(size_t k = 0; k < A->size2(); ++k)
-                    A->at_element(i, k) -= A->at_element(j, k) * (*tmp);
+    const std::shared_ptr<matrix::matrix<T>> triang_matrix(std::shared_ptr<matrix::matrix<T>> A_copy) {
+        for(size_t j = 0; j < A_copy->size1() - 1; ++j) {
+            T tmp{};
+            for(size_t i = j + 1; i < A_copy->size2() - 1; ++i) {
+                tmp = A_copy->at_element(i, j)/A_copy->at_element(j, j);
+                for(size_t k = 0; k < A_copy->size2(); ++k)
+                    A_copy->at_element(i, k) -= A_copy->at_element(j, k) * (tmp);
             }
         }
-        std::cout << A << std::endl;
+        return A_copy;     
     }
-    void print_matrix(){
-        std::lock_guard<std::mutex> l(mutex);
-        std::cout << std::fixed << std::defaultfloat << krm::format_delimited(krm::columns(A->size2()) [krm::auto_], '\t', A->data()) << std::endl;
-    }
+public:
     void solver_gauss() {
         std::lock_guard<std::mutex> l(mutex);
-        T s{};
-        for(int i = A->size1() - 1; i >= 0; --i) {
+        T s;
+        auto A_ptr = triang_matrix(A);
+        std::cout << "============================" << std::endl;
+        std::cout << "Метод Гауса: \n" << A_ptr << std::endl;
+        T* x = new T[N];
+        for(int i = A_ptr->size1() - 1; i >= 0; --i) {
             s = 0;
-            for(size_t j = i + 1; j < A->size2() - 1; j++) {
-                s += A->at_element(i, j) * x->at(j);
+            for(size_t j = i + 1; j < A_ptr->size2() - 1; j++) {
+                s += A_ptr->at_element(i, j) * x[j];
             }
-            x->at(i) = (A->at_element(i, A->size2() - 1) - s)/A->at_element(i, i);
+            x[i] = (A_ptr->at_element(i, A_ptr->size2() - 1) - s)/A_ptr->at_element(i, i);
         }
-        int i = 1;
-        for(const auto& t : *x) std::cout << "x[" << i ++ << "] = " << t << std::endl;
+        std::cout << "Корни: \n"  << std::endl;
+        for(unsigned j = 0; j < N; ++j) std::cout << "x[" << j + 1 << "] = " << x[j] << std::endl;
+        delete [] x;
     }
     void solver_LU() {
         std::lock_guard<std::mutex> l(mutex);
@@ -125,38 +126,43 @@ public:
             U_Row(i);
             if(i < N - 1) L_Col(i);
         }
-        std::cout << std::setprecision(1) << "U =\n" << krm::format_delimited(krm::columns(U->size2()) [krm::auto_], '\t', U->data()) << std::endl;
-        std::cout << std::setprecision(1) << "L =\n" << krm::format_delimited(krm::columns(L->size2()) [krm::auto_], '\t', L->data()) << std::endl;
-    }
-    void print_vector(){
-        std::lock_guard<std::mutex> l(mutex);
+        std::cout << "============================" << std::endl;
+        std::cout << std::setprecision(1) << "LU разложение\nU =\n" << U << std::endl;
+        std::cout << std::setprecision(1) << "L =\n" << L << std::endl;
         LV_B();
         UX_V();
         int i = 1;
+        std::cout << "Корни: \n"  << std::endl;
         for(const auto& t : *x_1) std::cout << "x[" << i ++ << "] = " << t << std::endl;
     }
+
 private:
     void U_Row(size_t i) {
+        T s;
         for(size_t j = i; j < N; ++j) {
-            T s{};
+            s = T(0);
             for(size_t k = 0; k < N - 1; ++k) {
                 s += U->at_element(k, j)*L->at_element(i, k);
             }
             U->at_element(i, j) = A->at_element(i, j) - s;
+            // std::cout << s << " ";
         }
     }
     void L_Col(size_t j) {
+        T s;
         for(size_t i = j + 1; i < N; ++i) {
-            T s{};
+            s = T(0);
             for(size_t k = 0; k <= j; k++) {
                 s += U->at_element(k, j)*L->at_element(i, k);
             }
             L->at_element(i, j) = (A->at_element(i, j) - s)/U->at_element(j, j);
+            // std::cout << s << " ";
         }
     }
     void LV_B() {
+        T s;
         for(size_t i = 0; i < N; ++i) {
-            T s{};
+            s = T(0);
             for(size_t j = 0; j <= i; j++) {
                 s += L->at_element(i, j)*v->at(j);
             }
@@ -164,8 +170,9 @@ private:
         }
     }
     void UX_V() {
+        T s;
         for(int i = N - 1; i >= 0; i--) {
-            T s{};
+            s = T(0);
             for(size_t j = i + 1; j < N; j++) {
                 s += U->at_element(i, j)*x_1->at(j);
             }
