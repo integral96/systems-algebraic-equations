@@ -15,6 +15,7 @@
 #include <boost/spirit/include/karma.hpp>
 #include <boost/assign/list_inserter.hpp>
 #include <boost/random.hpp>
+#include <boost/current_function.hpp>
 
 namespace matrix = boost::numeric::ublas;
 namespace krm  = boost::spirit::karma;
@@ -58,6 +59,8 @@ private:
     std::unique_ptr<std::vector<T>> x_1;
     std::unique_ptr<std::vector<T>> v;
 
+    std::weak_ptr<matrix::matrix<T>> weak_matrix;
+
     std::ifstream file;
     size_t N{}, M{};
 
@@ -83,21 +86,36 @@ public:
         L = std::make_shared<matrix::matrix<T>>(N, N);
         init_matrix();
         std::cout << "Матрица А: \n" << A << std::endl;
+        
     }
-private:  
+    ~Solver_Algebrick() {
+        std::cout << BOOST_CURRENT_FUNCTION << std::endl;
+        std::cout << A.use_count() << std::endl;
+    }
+private: 
+    void weak_ptr_info(const std::weak_ptr<matrix::matrix<T>>& p) {
+        std::cout << std::boolalpha << "weak_ptr info: " << p.expired() << ". count: " << p.use_count() << std::endl;
+        if(const auto sp (p.lock()); sp) {
+            std::cout << krm::format_delimited(krm::columns(sp->size2()) [krm::auto_], '\t', sp->data()) << std::endl;
+        } else std::cout << "FALSE" << std::endl;
+    }
     void inline init_matrix() {
         for(size_t i = 0; i < A->size1(); ++i)
             for(size_t j = 0; j < A->size2(); ++j) file >> A->at_element(i, j);
     }
-    const std::shared_ptr<matrix::matrix<T>> triang_matrix(std::shared_ptr<matrix::matrix<T>> A_copy) {
+    const std::shared_ptr<matrix::matrix<T>> triang_matrix(const std::shared_ptr<matrix::matrix<T>>& A) const {
+        auto A_copy = A;
+        T tmp;
         for(size_t j = 0; j < A_copy->size1() - 1; ++j) {
-            T tmp{};
+            tmp = T(0);
             for(size_t i = j + 1; i < A_copy->size2() - 1; ++i) {
                 tmp = A_copy->at_element(i, j)/A_copy->at_element(j, j);
                 for(size_t k = 0; k < A_copy->size2(); ++k)
                     A_copy->at_element(i, k) -= A_copy->at_element(j, k) * (tmp);
             }
         }
+        // weak_matrix = A_copy;
+        // weak_ptr_info(weak_matrix);
         return A_copy;     
     }
 public:
@@ -109,7 +127,7 @@ public:
         std::cout << "Метод Гауса: \n" << A_ptr << std::endl;
         T* x = new T[N];
         for(int i = A_ptr->size1() - 1; i >= 0; --i) {
-            s = 0;
+            s = T(0);
             for(size_t j = i + 1; j < A_ptr->size2() - 1; j++) {
                 s += A_ptr->at_element(i, j) * x[j];
             }
@@ -134,6 +152,8 @@ public:
         int i = 1;
         std::cout << "Корни: \n"  << std::endl;
         for(const auto& t : *x_1) std::cout << "x[" << i ++ << "] = " << t << std::endl;
+        // weak_matrix = A;
+        // weak_ptr_info(weak_matrix);
     }
 
 private:
@@ -145,7 +165,6 @@ private:
                 s += U->at_element(k, j)*L->at_element(i, k);
             }
             U->at_element(i, j) = A->at_element(i, j) - s;
-            // std::cout << s << " ";
         }
     }
     void L_Col(size_t j) {
