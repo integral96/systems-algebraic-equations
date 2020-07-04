@@ -6,6 +6,7 @@ set(SOURCES
     main.cpp)
 set(HEADERS
     solver_algebrick.hpp
+    meta_solver_algebrick.hpp
 )
 
 set(CMAKE_CXX_STANDARD 17)

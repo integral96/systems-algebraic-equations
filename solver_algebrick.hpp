@@ -1,5 +1,4 @@
-#ifndef SOLVER_ALGEBRICK_H
-#define SOLVER_ALGEBRICK_H
+#pragma once
 
 #include <memory>
 #include <thread>
@@ -200,4 +199,4 @@ private:
     }
 };
 
-#endif // SOLVER_ALGEBRICK_H
+
