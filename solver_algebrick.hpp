@@ -16,6 +16,8 @@
 #include <boost/random.hpp>
 #include <boost/current_function.hpp>
 
+#include "meta_solver_algebrick.hpp"
+
 namespace matrix = boost::numeric::ublas;
 namespace krm  = boost::spirit::karma;
 
@@ -60,13 +62,15 @@ private:
 
     std::weak_ptr<matrix::matrix<T>> weak_matrix;
 
-    std::ifstream file;
+    std::ifstream file, file1;
     size_t N{}, M{};
+
+    matrix::matrix<T> A_1, L_1, U_1;
 
     std::mutex mutex;
 public:
-    Solver_Algebrick(const std::string& name) : file(name) {
-        if(!file)
+    Solver_Algebrick(const std::string& name) : file(name), file1(name) {
+        if(!file && !file1)
         {
             std::cerr << "Error opening matrix file.\n";
             return;
@@ -83,9 +87,11 @@ public:
         A = std::make_shared<matrix::matrix<T>>(N, M);
         U = std::make_shared<matrix::matrix<T>>(N, N);
         L = std::make_shared<matrix::matrix<T>>(N, N);
+
+        init_matrix_meta(N, M);
         init_matrix();
         std::cout << "Матрица А: \n" << A << std::endl;
-        
+       
     }
     ~Solver_Algebrick() {
         std::cout << BOOST_CURRENT_FUNCTION << std::endl;
@@ -98,9 +104,24 @@ private:
             std::cout << krm::format_delimited(krm::columns(sp->size2()) [krm::auto_], '\t', sp->data()) << std::endl;
         } else std::cout << "FALSE" << std::endl;
     }
-    void inline init_matrix() {
-        for(size_t i = 0; i < A->size1(); ++i)
-            for(size_t j = 0; j < A->size2(); ++j) file >> A->at_element(i, j);
+    void init_matrix() {
+        for(size_t i = 0; i < A->size1(); ++i) {
+            for(size_t j = 0; j < A->size2(); ++j) {
+                file >> A->at_element(i, j);
+            }
+        }
+    }
+    void init_matrix_meta(size_t N, size_t M) {
+        A_1.resize(N, M);
+        L_1.resize(N, N);
+        U_1.resize(N, N);
+        for(size_t i = 0; i < N; ++i) {
+            L_1(i, i) = T(1);
+            U_1(i, i) = T(1);
+            for(size_t j = 0; j < M; ++j) {
+                file1 >> A_1(i, j);
+            }
+        }
     }
     const std::shared_ptr<matrix::matrix<T>> triang_matrix(const std::shared_ptr<matrix::matrix<T>>& A) const {
         auto A_copy = A;
@@ -153,6 +174,17 @@ public:
         for(const auto& t : *x_1) std::cout << "x[" << i ++ << "] = " << t << std::endl;
         // weak_matrix = A;
         // weak_ptr_info(weak_matrix);
+    }
+    void solve_Meta_LU() {
+        std::lock_guard<std::mutex> l(mutex);
+        
+        LU_solv<10, 10>(A_1, L_1, U_1);
+        std::cout << " META LU ============================" << std::endl;
+        std::cout << "U = \n" << krm::format_delimited(krm::columns(U_1.size2()) [krm::auto_], '\t', U_1.data())  << std::endl
+                << "L = \n" << krm::format_delimited(krm::columns(L_1.size2()) [krm::auto_], '\t', L_1.data()) << std::endl;
+        A_1.clear();
+        U_1.clear();
+        L_1.clear();
     }
 
 private:

@@ -12,36 +12,6 @@
 namespace matrix = boost::numeric::ublas;
 namespace krm  = boost::spirit::karma;
 
-
-//template<typename T>
-//std::ostream& operator << (std::ostream& out, const std::shared_ptr<matrix::matrix<T>>& A) {
-//    out << std::setprecision(1)  << krm::format_delimited(krm::columns(A->size2()) [krm::auto_], '\t', A->data()) << std::endl;
-//    return out;
-//}
-
-
-//void U_Row(size_t i) {
-//    T s;
-//    for(size_t j = i; j < N; ++j) {
-//        s = T(0);
-//        for(size_t k = 0; k < N - 1; ++k) {
-//            s += U->at_element(k, j)*L->at_element(i, k);
-//        }
-//        U->at_element(i, j) = A->at_element(i, j) - s;
-//    }
-//}
-//void L_Col(size_t j) {
-//    T s;
-//    for(size_t i = j + 1; i < N; ++i) {
-//        s = T(0);
-//        for(size_t k = 0; k <= j; k++) {
-//            s += U->at_element(k, j)*L->at_element(i, k);
-//        }
-//        L->at_element(i, j) = (A->at_element(i, j) - s)/U->at_element(j, j);
-//        // std::cout << s << " ";
-//    }
-//}
-
 template<size_t N, typename T>
 struct multy_tmp {
     typedef multy_tmp<N - 1, T> sub_type;
@@ -77,9 +47,9 @@ struct mult_block {
     typedef loopback<I, N, J, M> loop_type;
     typedef mult_block<loop_type::next_I, N, loop_type::next_J, M, PRED> next_type;
     template<typename T, typename Matrix>
-    void operator ()(T& tmp, Matrix& U, Matrix& L, size_t i, size_t j, size_t k) {
+    void operator ()(T& tmp, Matrix& U, Matrix& L, size_t i, size_t k, size_t j) {
         tmp.value += U(k, j + J) * L(i + I, k);
-        next_type()(tmp.sub, U, L, i, j, k);
+        next_type()(tmp.sub, U, L, i, k, j);
     }
     template<typename T, typename Matrix>
     void update(const T& tmp, Matrix& U, Matrix& L, const Matrix& A, size_t i, size_t j) {
@@ -97,9 +67,9 @@ struct mult_block<I, N, M, M, PRED> {
     typedef mult_block<I + 1, N, 0, M, PRED> next_type;
 
     template<typename T, typename Matrix>
-    void operator ()(T& tmp, Matrix& U, Matrix& L, size_t i, size_t j, size_t k) {
+    void operator ()(T& tmp, Matrix& U, Matrix& L, size_t i, size_t k, size_t j) {
         tmp.value += U(k, j + M) * L(i + I, k);
-        next_type()(tmp.sub, U, L, i, j, k);
+        next_type()(tmp.sub, U, L, i, k, j);
     }
     template<typename T, typename Matrix>
     void update(const T& tmp, Matrix& U, Matrix& L, const Matrix& A, size_t i, size_t j) {
@@ -116,7 +86,7 @@ template<size_t N, size_t M, bool PRED>
 struct mult_block<N, N, M, M, PRED> {
 
     template<typename T, typename Matrix>
-    void operator ()(T& tmp, Matrix& U, Matrix& L, size_t i, size_t j, size_t k) {
+    void operator ()(T& tmp, Matrix& U, Matrix& L, size_t i, size_t k, size_t j) {
         tmp.value += U(k, j + M) * L(i + N, k);
     }
     template<typename T, typename Matrix>
@@ -129,63 +99,36 @@ struct mult_block<N, N, M, M, PRED> {
     }
 };
 
-template<size_t I, size_t N, size_t M, typename Matrix>
-void U_Row(const Matrix& A, Matrix& L, Matrix& U) {
+template<size_t N, size_t M, typename Matrix>
+inline void LU_solv(const Matrix& A, Matrix& L, Matrix& U) {
     typedef typename Matrix::value_type value_type;
-    mult_block<I, N - 1, 0, M - 1, true> block;
-    for (size_t j = I; j < N; j += M)
-    {
-        multy_tmp<N*M, value_type> tmp(value_type{});
-        for (size_t k = 0; k < N - 1; ++k)
+    size_t S = A.size1();
+    mult_block<0, N - 1, 0, M - 1, true> block_U;
+    mult_block<0, N - 1, 0, M - 1, false> block_L;
+    for (size_t i = 0; i < S - 1; i += N) {
+        for (size_t j = i; j < S; j += M)
         {
-            block(tmp, U, L, I, k, j);
+            multy_tmp<N*M, value_type> tmp(value_type(0));
+            for (size_t k = 0; k < S; ++k)
+            {
+                block_U(tmp, U, L, i, k, j);
+            }
+            block_U.update(tmp, U, L, A, i, j);
         }
-        block.update(tmp, U, L, A, I, j);
-    }
-}
-template<size_t J, size_t N, size_t M, typename Matrix>
-void L_Col(const Matrix& A, Matrix& L, Matrix& U) {
-    typedef typename Matrix::value_type value_type;
-    mult_block<0, N - 1, J, M - 1, false> block;
-    for (size_t i = J + 1; i < N; i += M)
-    {
-        multy_tmp<N*M, value_type> tmp(value_type{});
-        for (size_t k = 0; k <= J; ++k)
+        if(i < S - 1)
+        for (size_t j = i; j < S; j += M)
         {
-            block(tmp, U, L, i, k, J);
+            multy_tmp<N*M, value_type> tmp(value_type(0));
+            for (size_t k = 0; k <= i ; ++k)
+            {
+                block_L(tmp, U, L, j, k, i);
+            }
+            block_L.update(tmp, U, L, A, j, i);
         }
-        block.update(tmp, U, L, A, i, J);
     }
 }
 
 /*!
  * read Matrix
  */
-void solve_Meta_LU(const std::string& name) {
-    size_t N{}, M{};
-    std::ifstream file(name);
 
-    if(!file)
-    {
-        std::cerr << "Error opening matrix file.\n";
-        return;
-    }
-    file >> N >> M;
-    if(N < 1 || M < 1)
-    {
-        std::cerr << "Matrix sizes are out of bounds.\n";
-        return;
-    }
-    matrix::matrix<double> A(N, M), L(N, N), U(N, N);
-
-    for(size_t i = 0; i < A.size1(); ++i)
-        for(size_t j = 0; j < A.size2(); ++j) file >> A(i, j);
-
-    for(size_t i = 0; i < N; ++i) L(i, i) = 1.;
-    std::cout << krm::format_delimited(krm::columns(A.size2()) [krm::auto_], '\t', A.data()) << std::endl;
-    U_Row<2, 10, 11, matrix::matrix<double>>(A, L, U);
-    L_Col<2, 10, 11, matrix::matrix<double>>(A, L, U);
-    std::cout << krm::format_delimited(krm::columns(L.size2()) [krm::auto_], '\t', L.data())  << std::endl
-              << krm::format_delimited(krm::columns(U.size2()) [krm::auto_], '\t', U.data()) << std::endl;
-
-}
