@@ -6,6 +6,7 @@
 #include <boost/coroutine/all.hpp>
 #include <boost/bind.hpp>
 
+
 int main()
 {
 //    gen_rand_matrix<int>("matrix_out1.txt", 10, 11);

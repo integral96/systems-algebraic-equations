@@ -182,9 +182,9 @@ public:
         std::cout << " META LU ============================" << std::endl;
         std::cout << "U = \n" << krm::format_delimited(krm::columns(U_1.size2()) [krm::auto_], '\t', U_1.data())  << std::endl
                 << "L = \n" << krm::format_delimited(krm::columns(L_1.size2()) [krm::auto_], '\t', L_1.data()) << std::endl;
-        A_1.clear();
-        U_1.clear();
-        L_1.clear();
+        // A_1.clear();
+        // U_1.clear();
+        // L_1.clear();
     }
 
 private:
